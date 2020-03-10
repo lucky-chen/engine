@@ -18,13 +18,15 @@
 #include "flutter/fml/message_loop.h"
 #include "flutter/shell/common/rasterizer.h"
 #include "flutter/shell/platform/android/platform_view_android.h"
+#include "flutter/shell/platform/android/platform_view_android_jni.h"
 
 namespace flutter {
 
 AndroidShellHolder::AndroidShellHolder(
     flutter::Settings settings,
     fml::jni::JavaObjectWeakGlobalRef java_object,
-    bool is_background_view)
+    bool is_background_view,
+    bool init_async_mode)
     : settings_(std::move(settings)), java_object_(java_object) {
   static size_t shell_count = 1;
   auto thread_label = std::to_string(shell_count++);
@@ -100,9 +102,18 @@ AndroidShellHolder::AndroidShellHolder(
                                     ui_runner,        // ui
                                     io_runner         // io
   );
+  fml::closure asyncInitCallback;
+  if (init_async_mode) {
+    asyncInitCallback = [java_object]() {
+      JNIEnv* env = fml::jni::AttachCurrentThread();
+      auto scoped_jni_obj = java_object.get(env);
+      FlutterViewHandleEngineInit(env, scoped_jni_obj.obj());
+    };
+  }
 
   shell_ =
-      Shell::Create(task_runners,             // task runners
+      Shell::Create(asyncInitCallback,
+                    task_runners,             // task runners
                     settings_,                // settings
                     on_create_platform_view,  // platform view create callback
                     on_create_rasterizer      // rasterizer create callback

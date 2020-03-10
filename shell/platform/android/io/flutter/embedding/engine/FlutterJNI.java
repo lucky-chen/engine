@@ -187,13 +187,13 @@ public class FlutterJNI {
    * This method must not be invoked if {@code FlutterJNI} is already attached to native.
    */
   @UiThread
-  public void attachToNative(boolean isBackgroundView) {
+  public void attachToNative(boolean isBackgroundView,boolean asyncInit) {
     ensureRunningOnMainThread();
     ensureNotAttachedToNative();
-    nativePlatformViewId = nativeAttach(this, isBackgroundView);
+    nativePlatformViewId = nativeAttach(this, isBackgroundView,asyncInit);
   }
 
-  private native long nativeAttach(@NonNull FlutterJNI flutterJNI, boolean isBackgroundView);
+  private native long nativeAttach(@NonNull FlutterJNI flutterJNI, boolean isBackgroundView,boolean asyncInit);
 
   /**
    * Detaches this {@code FlutterJNI} instance from Flutter's native engine, which precludes
@@ -202,7 +202,7 @@ public class FlutterJNI {
    * This method must not be invoked if {@code FlutterJNI} is not already attached to native.
    * <p>
    * Invoking this method will result in the release of all native-side resources that were
-   * setup during {@link #attachToNative(boolean)}, or accumulated thereafter.
+   * setup during {@link #attachToNative(boolean,boolean)}, or accumulated thereafter.
    * <p>
    * It is permissable to re-attach this instance to native after detaching it from native.
    */
@@ -652,6 +652,13 @@ public class FlutterJNI {
       platformMessageHandler.handlePlatformMessageResponse(replyId, reply);
     }
     // TODO(mattcarroll): log dropped messages when in debug mode (https://github.com/flutter/flutter/issues/25391)
+  }
+    
+  //called by native on async init mode, means engine async init success
+  private void handleEngineInit(){
+    for (EngineLifecycleListener listener : engineLifecycleListeners) {
+        listener.onEngineInit();
+    }
   }
 
   /**

@@ -113,6 +113,13 @@ public class FlutterEngine {
         lifecycleListener.onPreEngineRestart();
       }
     }
+    //new api,called when engine init success for aync mode
+    public void onEngineInit(){
+        Log.v(TAG, "onEngineInit()");
+        for (EngineLifecycleListener lifecycleListener : engineLifecycleListeners) {
+            lifecycleListener.onEngineInit();
+        }
+    }
   };
 
   /**
@@ -179,12 +186,25 @@ public class FlutterEngine {
       @Nullable String[] dartVmArgs,
       boolean automaticallyRegisterPlugins
   ) {
+    this(context, flutterLoader, flutterJNI, dartVmArgs, automaticallyRegisterPlugins,null);
+  }
+
+  public FlutterEngine(
+      @NonNull Context context,
+      @NonNull FlutterLoader flutterLoader,
+      @NonNull FlutterJNI flutterJNI,
+      @Nullable String[] dartVmArgs,
+      boolean automaticallyRegisterPlugins,
+      EngineLifecycleListener asyncInitListener
+  ) {
     this.flutterJNI = flutterJNI;
     flutterLoader.startInitialization(context);
     flutterLoader.ensureInitializationComplete(context, dartVmArgs);
-
+    if(asyncInitListener != null){
+      addEngineLifecycleListener(asyncInitListener);
+    }
     flutterJNI.addEngineLifecycleListener(engineLifecycleListener);
-    attachToJni();
+    attachToJni(asyncInitListener != null);
 
     this.dartExecutor = new DartExecutor(flutterJNI, context.getAssets());
     this.dartExecutor.onAttachedToJNI();
@@ -215,10 +235,10 @@ public class FlutterEngine {
     }
   }
 
-  private void attachToJni() {
+  private void attachToJni(boolean asyncInitMode) {
     Log.v(TAG, "Attaching to JNI.");
     // TODO(mattcarroll): update native call to not take in "isBackgroundView"
-    flutterJNI.attachToNative(false);
+    flutterJNI.attachToNative(false,asyncInitMode);
 
     if (!isAttachedToJni()) {
       throw new RuntimeException("FlutterEngine failed to attach to its native Object reference.");
@@ -431,5 +451,10 @@ public class FlutterEngine {
      * Lifecycle callback invoked before a hot restart of the Flutter engine.
      */
     void onPreEngineRestart();
+     
+    /**
+    * Lifecycle callback invoked after flutter engine async init success
+    */
+    void onEngineInit();
   }
 }
