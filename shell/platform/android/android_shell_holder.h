@@ -23,7 +23,8 @@ class AndroidShellHolder {
  public:
   AndroidShellHolder(flutter::Settings settings,
                      fml::jni::JavaObjectWeakGlobalRef java_object,
-                     bool is_background_view);
+                     bool is_background_view,
+                     bool async_init);
 
   ~AndroidShellHolder();
 

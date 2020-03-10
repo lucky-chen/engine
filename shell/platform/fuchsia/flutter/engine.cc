@@ -238,7 +238,9 @@ Engine::Engine(Delegate& delegate,
 
   {
     TRACE_EVENT0("flutter", "CreateShell");
+    fml::closure empty_func;
     shell_ = flutter::Shell::Create(
+        empty_func,
         task_runners,                 // host task runners
         flutter::WindowData(),        // default window data
         settings_,                    // shell launch settings

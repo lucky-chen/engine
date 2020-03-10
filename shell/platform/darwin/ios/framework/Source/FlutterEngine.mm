@@ -399,7 +399,9 @@ NSString* const FlutterDefaultDartEntrypoint = nil;
                                                             libraryOrNil:libraryOrNil]);
 }
 
-- (BOOL)createShell:(NSString*)entrypoint libraryURI:(NSString*)libraryURI {
+- (BOOL)createShell:(NSString*)entrypoint
+           libraryURI:(NSString*)libraryURI
+    asyncInitCallback:(InitCallBackBlock)oc_async_init_block {
   if (_shell != nullptr) {
     FML_LOG(WARNING) << "This FlutterEngine was already invoked.";
     return NO;
@@ -461,7 +463,9 @@ NSString* const FlutterDefaultDartEntrypoint = nil;
                                       _threadHost.io_thread->GetTaskRunner()           // io
     );
     // Create the shell. This is a blocking operation.
-    _shell = flutter::Shell::Create(std::move(task_runners),  // task runners
+    fml::closure empty_callback;
+    _shell = flutter::Shell::Create(empty_callback,
+                                    std::move(task_runners),  // task runners
                                     std::move(windowData),    // window data
                                     std::move(settings),      // settings
                                     on_create_platform_view,  // platform view creation
@@ -475,7 +479,16 @@ NSString* const FlutterDefaultDartEntrypoint = nil;
                                       _threadHost.io_thread->GetTaskRunner()           // io
     );
     // Create the shell. This is a blocking operation.
-    _shell = flutter::Shell::Create(std::move(task_runners),  // task runners
+    fml::closure async_init_callback;
+    oc_async_init_block = [oc_async_init_block copy];
+    if (oc_async_init_block) {
+      async_init_callback = [oc_async_init_block]() {
+        oc_async_init_block();
+        [oc_async_init_block release];
+      };
+    }
+    _shell = flutter::Shell::Create(async_init_callback,
+                                    std::move(task_runners),  // task runners
                                     std::move(windowData),    // window data
                                     std::move(settings),      // settings
                                     on_create_platform_view,  // platform view creation
@@ -487,20 +500,46 @@ NSString* const FlutterDefaultDartEntrypoint = nil;
     FML_LOG(ERROR) << "Could not start a shell FlutterEngine with entrypoint: "
                    << entrypoint.UTF8String;
   } else {
-    [self setupChannels];
-    if (!_platformViewsController) {
-      _platformViewsController.reset(new flutter::FlutterPlatformViewsController());
+    if (!oc_async_init_block) {
+      [self setUpWhenInit];
     }
-    _publisher.reset([[FlutterObservatoryPublisher alloc] init]);
-    [self maybeSetupPlatformViewChannels];
-    _shell->GetIsGpuDisabledSyncSwitch()->SetSwitch(_isGpuDisabled ? true : false);
   }
-
   return _shell != nullptr;
+}
+
+- (BOOL)createShell:(NSString*)entrypoint libraryURI:(NSString*)libraryURI {
+  return [self createShell:entrypoint libraryURI:libraryURI asyncInitCallback:nil];
+}
+
+- (void)setUpWhenInit {
+  [self setupChannels];
+  if (!_platformViewsController) {
+    _platformViewsController.reset(new flutter::FlutterPlatformViewsController());
+  }
+  _publisher.reset([[FlutterObservatoryPublisher alloc] init]);
+  [self maybeSetupPlatformViewChannels];
+  _shell->GetIsGpuDisabledSyncSwitch()->SetSwitch(_isGpuDisabled ? true : false);
 }
 
 - (BOOL)run {
   return [self runWithEntrypoint:FlutterDefaultDartEntrypoint libraryURI:nil];
+}
+
+- (void)asyncRun:(InitCallBackBlock)asyncCallback {
+  NSAssert(asyncCallback != nil,
+           @"asyncCallback must be not nil! you should called other api after initCallback called");
+  asyncCallback = [asyncCallback copy];
+  [self createShell:FlutterDefaultDartEntrypoint
+             libraryURI:nil
+      asyncInitCallback:^() {
+        [self setUpWhenInit];
+        [self launchEngine:FlutterDefaultDartEntrypoint libraryURI:nil];
+        // in release mode,add np protection
+        if (asyncCallback != nil) {
+          asyncCallback();
+          [asyncCallback release];
+        }
+      }];
 }
 
 - (BOOL)runWithEntrypoint:(NSString*)entrypoint libraryURI:(NSString*)libraryURI {

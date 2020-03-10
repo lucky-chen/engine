@@ -11,7 +11,10 @@ import android.support.test.InstrumentationRegistry;
 import android.support.test.internal.runner.junit4.statement.UiThreadStatement;
 import android.support.test.runner.AndroidJUnit4;
 import io.flutter.embedding.engine.FlutterEngine;
+import io.flutter.embedding.engine.FlutterEngine.EngineLifecycleListener;
+import io.flutter.embedding.engine.FlutterEngineCache;
 import io.flutter.embedding.engine.dart.DartExecutor;
+import io.flutter.embedding.engine.dart.DartExecutor.DartEntrypoint;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -64,5 +67,26 @@ public class EngineLaunchE2ETest {
       fail("timed out waiting for engine started signal");
     }
     // If it gets to here, statusReceived is true.
+  }
+
+  @Test
+  public void smokeTestEngineAsyncLaunch() {
+    UiThreadStatement.runOnUiThread(
+        () -> {
+          EngineLifecycleListener listener =
+              new EngineLifecycleListener() {
+                @Override
+                public void onPreEngineRestart() {}
+
+                @Override
+                public void onEngineInit() {
+                  FlutterEngine engine = FlutterEngineCache.getInstance().get("my_engine_id");
+                  engine.getDartExecutor().executeDartEntrypoint(DartEntrypoint.createDefault());
+                }
+              };
+          FlutterEngine engine =
+              FlutterEngine.createEngineAndInitAsync(RuntimeEnvironment.application, listener);
+          FlutterEngineCache.getInstance().put("my_engine_id", engine);
+        });
   }
 }

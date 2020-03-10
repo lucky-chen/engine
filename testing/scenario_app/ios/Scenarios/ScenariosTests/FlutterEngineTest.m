@@ -47,4 +47,12 @@
   XCTAssertNil(engine.lifecycleChannel);
 }
 
+- (void)testAsyncInitEngine {
+  FlutterEngine* engine = [[FlutterEngine alloc] initWithName:@"my flutter engine"];
+  [flutterEngine asyncRun:^(){
+      // on app
+      //[GeneratedPluginRegistrant registerWithRegistry:self];
+  }];
+}
+
 @end

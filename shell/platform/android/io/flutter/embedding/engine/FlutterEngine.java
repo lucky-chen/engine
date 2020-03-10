@@ -100,6 +100,12 @@ public class FlutterEngine {
 
           platformViewsController.onPreEngineRestart();
         }
+        // new api,called when engine init success for aync mode
+        public void onEngineInit() {
+          for (EngineLifecycleListener lifecycleListener : engineLifecycleListeners) {
+            lifecycleListener.onEngineInit();
+          }
+        }
       };
 
   /**
@@ -199,12 +205,53 @@ public class FlutterEngine {
       @NonNull PlatformViewsController platformViewsController,
       @Nullable String[] dartVmArgs,
       boolean automaticallyRegisterPlugins) {
+    this(
+        context,
+        flutterLoader,
+        flutterJNI,
+        platformViewsController,
+        dartVmArgs,
+        automaticallyRegisterPlugins,
+        null);
+  }
+
+  /**
+   * Same as {@link #FlutterEngine(Context, FlutterLoader, FlutterJNI)}, but init native env with
+   * async mode {@code asyncInitListener} async init callback, called when async init finish
+   */
+  public static FlutterEngine createEngineAndInitAsync(
+      @NonNull Context context, @NonNull EngineLifecycleListener asyncInitListener) {
+    return new FlutterEngine(
+        context,
+        FlutterLoader.getInstance(),
+        new FlutterJNI(),
+        new PlatformViewsController(),
+        null,
+        true,
+        asyncInitListener);
+  }
+
+  /**
+   * Fully configurable {@code FlutterEngine} constructor. {@code asyncInitListener} if null,init
+   * native env sycnc, if not null,will init native env async, and called when async init end
+   */
+  public FlutterEngine(
+      @NonNull Context context,
+      @NonNull FlutterLoader flutterLoader,
+      @NonNull FlutterJNI flutterJNI,
+      @NonNull PlatformViewsController platformViewsController,
+      @Nullable String[] dartVmArgs,
+      boolean automaticallyRegisterPlugins,
+      EngineLifecycleListener asyncInitListener) {
     this.flutterJNI = flutterJNI;
     flutterLoader.startInitialization(context.getApplicationContext());
     flutterLoader.ensureInitializationComplete(context, dartVmArgs);
 
     flutterJNI.addEngineLifecycleListener(engineLifecycleListener);
-    attachToJni();
+    if (asyncInitListener != null) {
+      addEngineLifecycleListener(asyncInitListener);
+    }
+    attachToJni(asyncInitListener != null);
 
     this.dartExecutor = new DartExecutor(flutterJNI, context.getAssets());
     this.dartExecutor.onAttachedToJNI();
@@ -233,10 +280,10 @@ public class FlutterEngine {
     }
   }
 
-  private void attachToJni() {
+  private void attachToJni(boolean asyncInitMode) {
     Log.v(TAG, "Attaching to JNI.");
     // TODO(mattcarroll): update native call to not take in "isBackgroundView"
-    flutterJNI.attachToNative(false);
+    flutterJNI.attachToNative(false, asyncInitMode);
 
     if (!isAttachedToJni()) {
       throw new RuntimeException("FlutterEngine failed to attach to its native Object reference.");
@@ -435,5 +482,7 @@ public class FlutterEngine {
   public interface EngineLifecycleListener {
     /** Lifecycle callback invoked before a hot restart of the Flutter engine. */
     void onPreEngineRestart();
+    /** Lifecycle callback invoked after flutter engine async init success . */
+    void onEngineInit();
   }
 }

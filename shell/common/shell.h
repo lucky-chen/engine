@@ -134,7 +134,9 @@ class Shell final : public PlatformView::Delegate,
   ///             allows for specification of window data. If this is the first
   ///             instance of a shell in the process, this call also bootstraps
   ///             the Dart VM.
-  ///
+  /// @param[in]  async_init_callback      if null,init sync.
+  ///                                      else init async.and called when
+  ///                                      asyncInit end
   /// @param[in]  task_runners             The task runners
   /// @param[in]  window_data              The default data for setting up
   ///                                      ui.Window that attached to this
@@ -158,6 +160,7 @@ class Shell final : public PlatformView::Delegate,
   ///             immediately after getting a pointer to it.
   ///
   static std::unique_ptr<Shell> Create(
+      fml::closure& async_init_callback,
       TaskRunners task_runners,
       const WindowData window_data,
       Settings settings,
@@ -172,7 +175,9 @@ class Shell final : public PlatformView::Delegate,
   ///             allows for the specification of an isolate snapshot that
   ///             cannot be adequately described in the settings. This call also
   ///             requires the specification of a running VM instance.
-  ///
+  /// @param[in]  async_init_callback      if null,init sync.
+  ///                                      else init async.and called when
+  ///                                      asyncInit end
   /// @param[in]  task_runners             The task runners
   /// @param[in]  window_data              The default data for setting up
   ///                                      ui.Window that attached to this
@@ -200,6 +205,7 @@ class Shell final : public PlatformView::Delegate,
   ///             immediately after getting a pointer to it.
   ///
   static std::unique_ptr<Shell> Create(
+      fml::closure& async_init_callback,
       TaskRunners task_runners,
       const WindowData window_data,
       Settings settings,
@@ -419,6 +425,7 @@ class Shell final : public PlatformView::Delegate,
   Shell(DartVMRef vm, TaskRunners task_runners, Settings settings);
 
   static std::unique_ptr<Shell> CreateShellOnPlatformThread(
+      fml::closure& async_init_callback,
       DartVMRef vm,
       TaskRunners task_runners,
       const WindowData window_data,
@@ -431,6 +438,14 @@ class Shell final : public PlatformView::Delegate,
              std::unique_ptr<Engine> engine,
              std::unique_ptr<Rasterizer> rasterizer,
              std::unique_ptr<ShellIOManager> io_manager);
+
+  // called on asyncInit mode,set params
+  void BindParams(std::unique_ptr<PlatformView> platform_view,
+                  std::unique_ptr<Rasterizer> rasterizer,
+                  std::unique_ptr<ShellIOManager> io_manager);
+
+  // called on asyncInit mode,setup env
+  void OnEngineInit(std::unique_ptr<Engine> engine);
 
   void ReportTimings();
 
