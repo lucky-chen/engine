@@ -39,7 +39,24 @@ constexpr char kSystemChannel[] = "flutter/system";
 constexpr char kTypeKey[] = "type";
 constexpr char kFontChange[] = "fontsChange";
 
+void Shell::OnEngineInit(std::unique_ptr<Engine> engine) {
+  Setup(std::move(platform_view_),  //
+        std::move(engine),          //
+        std::move(rasterizer_),     //
+        std::move(io_manager_));    //
+}
+
+void Shell::BindParams(std::unique_ptr<PlatformView> platform_view,
+                       std::unique_ptr<Rasterizer> rasterizer,
+                       std::unique_ptr<ShellIOManager> io_manager) {
+  platform_view_ = std::move(platform_view);
+  // engine_ = std::move(engine);
+  rasterizer_ = std::move(rasterizer);
+  io_manager_ = std::move(io_manager);
+}
+
 std::unique_ptr<Shell> Shell::CreateShellOnPlatformThread(
+    fml::closure& async_init_callback,
     DartVMRef vm,
     TaskRunners task_runners,
     const WindowData window_data,
@@ -126,13 +143,20 @@ std::unique_ptr<Shell> Shell::CreateShellOnPlatformThread(
   auto dispatcher_maker = platform_view->GetDispatcherMaker();
 
   // Create the engine on the UI thread.
+  bool do_async_init = false;
+  if (async_init_callback) {
+    do_async_init = true;
+  }
   std::promise<std::unique_ptr<Engine>> engine_promise;
   auto engine_future = engine_promise.get_future();
+  std::promise<void> async_init_promise;
+  std::future<void> async_init_future = async_init_promise.get_future();
   fml::TaskRunner::RunNowOrPostTask(
       shell->GetTaskRunners().GetUITaskRunner(),
       fml::MakeCopyable([&engine_promise,                                 //
                          shell = shell.get(),                             //
-                         &dispatcher_maker,                               //
+                         callback_in = std::move(async_init_callback),    //
+                         dispatcher_in = std::move(dispatcher_maker),     //
                          &window_data,                                    //
                          isolate_snapshot = std::move(isolate_snapshot),  //
                          vsync_waiter = std::move(vsync_waiter),          //
@@ -148,21 +172,47 @@ std::unique_ptr<Shell> Shell::CreateShellOnPlatformThread(
         auto animator = std::make_unique<Animator>(*shell, task_runners,
                                                    std::move(vsync_waiter));
 
-        engine_promise.set_value(std::make_unique<Engine>(
-            *shell,                         //
-            dispatcher_maker,               //
-            *shell->GetDartVM(),            //
-            std::move(isolate_snapshot),    //
-            task_runners,                   //
-            window_data,                    //
-            shell->GetSettings(),           //
-            std::move(animator),            //
-            weak_io_manager_future.get(),   //
-            unref_queue_future.get(),       //
-            snapshot_delegate_future.get()  //
-            ));
-      }));
+        // wait params
+        auto snapshot_delegate = snapshot_delegate_future.get();
+        auto unref_queue = unref_queue_future.get();
+        auto io_manager = weak_io_manager_future.get();
+        if (callback_in) {
+          async_init_promise.set_value();
+        }
+        auto engine_ref =
+            std::make_unique<Engine>(*shell,                       //
+                                     dispatcher_in,                //
+                                     *shell->GetDartVM(),          //
+                                     std::move(isolate_snapshot),  //
+                                     task_runners,                 //
+                                     window_data,                  //
+                                     shell->GetSettings(),         //
+                                     std::move(animator),          //
+                                     std::move(io_manager),        //
+                                     std::move(unref_queue),       //
+                                     std::move(snapshot_delegate)  //
+            );
 
+        if (callback_in) {
+          fml::TaskRunner::RunNowOrPostTask(
+              shell->GetTaskRunners().GetPlatformTaskRunner(),
+              fml::MakeCopyable(
+                  [async_init_callback_func = std::move(callback_in),
+                   shell_inner = shell,
+                   engine_inner = std::move(engine_ref)]() mutable {
+                    shell_inner->OnEngineInit(std::move(engine_inner));
+                    async_init_callback_func();
+                  }));
+        } else {
+          engine_promise.set_value(std::move(engine_ref));
+        }
+      }));
+  if (do_async_init) {
+    async_init_future.get();
+    shell->BindParams(std::move(platform_view), rasterizer_future.get(),
+                      io_manager_future.get());
+    return shell;
+  }
   if (!shell->Setup(std::move(platform_view),  //
                     engine_future.get(),       //
                     rasterizer_future.get(),   //
@@ -240,6 +290,7 @@ static void PerformInitializationTasks(const Settings& settings) {
 }
 
 std::unique_ptr<Shell> Shell::Create(
+    fml::closure& async_init_callback,
     TaskRunners task_runners,
     Settings settings,
     const Shell::CreateCallback<PlatformView>& on_create_platform_view,
@@ -268,7 +319,8 @@ std::unique_ptr<Shell> Shell::Create(
 
   auto vm_data = vm->GetVMData();
 
-  return Shell::Create(std::move(task_runners),        //
+  return Shell::Create(async_init_callback,
+                       std::move(task_runners),        //
                        std::move(window_data),         //
                        std::move(settings),            //
                        vm_data->GetIsolateSnapshot(),  // isolate snapshot
@@ -279,6 +331,7 @@ std::unique_ptr<Shell> Shell::Create(
 }
 
 std::unique_ptr<Shell> Shell::Create(
+    fml::closure& async_init_callback,
     TaskRunners task_runners,
     const WindowData window_data,
     Settings settings,
@@ -303,6 +356,7 @@ std::unique_ptr<Shell> Shell::Create(
       fml::MakeCopyable([&latch,                                          //
                          vm = std::move(vm),                              //
                          &shell,                                          //
+                         &async_init_callback,                            //
                          task_runners = std::move(task_runners),          //
                          window_data,                                     //
                          settings,                                        //
@@ -310,7 +364,8 @@ std::unique_ptr<Shell> Shell::Create(
                          on_create_platform_view,                         //
                          on_create_rasterizer                             //
   ]() mutable {
-        shell = CreateShellOnPlatformThread(std::move(vm),
+        shell = CreateShellOnPlatformThread(async_init_callback,          //
+                                            std::move(vm),                //
                                             std::move(task_runners),      //
                                             window_data,                  //
                                             settings,                     //
