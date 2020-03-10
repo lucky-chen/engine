@@ -76,6 +76,16 @@ void FlutterViewHandlePlatformMessage(JNIEnv* env,
   FML_CHECK(CheckException(env));
 }
 
+static jmethodID g_handle_platform_engine_init_method = nullptr;
+void FlutterViewHandleEngineInit(JNIEnv* env,
+                                 jobject obj,
+                                 jboolean success,
+                                 jlong holder_id) {
+  env->CallVoidMethod(obj, g_handle_platform_engine_init_method, success,
+                      holder_id);
+  FML_CHECK(CheckException(env));
+}
+
 static jmethodID g_handle_platform_message_response_method = nullptr;
 void FlutterViewHandlePlatformMessageResponse(JNIEnv* env,
                                               jobject obj,
@@ -157,6 +167,26 @@ static jlong AttachJNI(JNIEnv* env,
   } else {
     return 0;
   }
+}
+
+static void AttachJNIAsync(JNIEnv* env,
+                           jclass clazz,
+                           jobject flutterJNI,
+                           jboolean is_background_view) {
+  LOGE("AttachJNIAsync");
+  fml::jni::JavaObjectWeakGlobalRef java_object(env, flutterJNI);
+  std::shared_ptr<jlong> view_id = std::make_shared<jlong>();
+  auto shell_holder_ref = std::make_unique<AndroidShellHolder>(
+      FlutterMain::Get().GetSettings(), java_object, is_background_view, true);
+
+  jlong shell_holder = reinterpret_cast<jlong>(shell_holder_ref.release());
+  ANDROID_SHELL_HOLDER->init([java_object, shell_holder](bool success) {
+    LOGE("AttachJNIAsync callback");
+    JNIEnv* env = fml::jni::AttachCurrentThread();
+    auto scoped_jni_obj = java_object.get(env);
+    FlutterViewHandleEngineInit(env, scoped_jni_obj.obj(), success,
+                                shell_holder);
+  });
 }
 
 static void DestroyJNI(JNIEnv* env, jobject jcaller, jlong shell_holder) {
@@ -367,12 +397,12 @@ static void DispatchPlatformMessage(JNIEnv* env,
                                     jobject message,
                                     jint position,
                                     jint responseId) {
-  ANDROID_SHELL_HOLDER->GetPlatformView()->DispatchPlatformMessage(
-      env,                                         //
-      fml::jni::JavaStringToString(env, channel),  //
-      message,                                     //
-      position,                                    //
-      responseId                                   //
+  auto plv = ANDROID_SHELL_HOLDER->GetPlatformView();
+  plv->DispatchPlatformMessage(env,                                         //
+                               fml::jni::JavaStringToString(env, channel),  //
+                               message,                                     //
+                               position,                                    //
+                               responseId                                   //
   );
 }
 
@@ -491,6 +521,11 @@ bool RegisterApi(JNIEnv* env) {
           .name = "nativeAttach",
           .signature = "(Lio/flutter/embedding/engine/FlutterJNI;Z)J",
           .fnPtr = reinterpret_cast<void*>(&AttachJNI),
+      },
+      {
+          .name = "nativeAttachAsync",
+          .signature = "(Lio/flutter/embedding/engine/FlutterJNI;Z)V",
+          .fnPtr = reinterpret_cast<void*>(&AttachJNIAsync),
       },
       {
           .name = "nativeDestroy",
@@ -621,6 +656,14 @@ bool RegisterApi(JNIEnv* env) {
 
   if (g_handle_platform_message_response_method == nullptr) {
     FML_LOG(ERROR) << "Could not locate handlePlatformMessageResponse method";
+    return false;
+  }
+
+  g_handle_platform_engine_init_method = env->GetMethodID(
+      g_flutter_jni_class->obj(), "handleNativeAttachAsync", "(ZJ)V");
+
+  if (g_handle_platform_engine_init_method == nullptr) {
+    FML_LOG(ERROR) << "Could not locate handleEngineCreated method";
     return false;
   }
 

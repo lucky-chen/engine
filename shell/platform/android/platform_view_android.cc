@@ -98,13 +98,11 @@ void PlatformViewAndroid::DispatchPlatformMessage(JNIEnv* env,
       static_cast<uint8_t*>(env->GetDirectBufferAddress(java_message_data));
   std::vector<uint8_t> message =
       std::vector<uint8_t>(message_data, message_data + java_message_position);
-
   fml::RefPtr<flutter::PlatformMessageResponse> response;
   if (response_id) {
     response = fml::MakeRefCounted<PlatformMessageResponseAndroid>(
         response_id, java_object_, task_runners_.GetPlatformTaskRunner());
   }
-
   PlatformView::DispatchPlatformMessage(
       fml::MakeRefCounted<flutter::PlatformMessage>(
           std::move(name), std::move(message), std::move(response)));
