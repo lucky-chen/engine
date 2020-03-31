@@ -47,6 +47,8 @@ enum class DartErrorCode {
   UnknownError = 255
 };
 
+using ShellCreateCallback = std::function<bool(std::unique_ptr<Shell> shell)>;
+
 //------------------------------------------------------------------------------
 /// Perhaps the single most important class in the Flutter engine repository.
 /// When embedders create a Flutter application, they are referring to the
@@ -160,12 +162,18 @@ class Shell final : public PlatformView::Delegate,
   ///             immediately after getting a pointer to it.
   ///
   static std::unique_ptr<Shell> Create(
-      fml::closure& async_init_callback,
       TaskRunners task_runners,
       const WindowData window_data,
       Settings settings,
       CreateCallback<PlatformView> on_create_platform_view,
       CreateCallback<Rasterizer> on_create_rasterizer);
+
+  static bool CreateAsync(ShellCreateCallback& callBack,
+                          TaskRunners task_runners,
+                          WindowData window_data,
+                          Settings settings,
+                          CreateCallback<PlatformView> on_create_platform_view,
+                          CreateCallback<Rasterizer> on_create_rasterizer);
 
   //----------------------------------------------------------------------------
   /// @brief      Creates a shell instance using the provided settings. The
@@ -205,7 +213,6 @@ class Shell final : public PlatformView::Delegate,
   ///             immediately after getting a pointer to it.
   ///
   static std::unique_ptr<Shell> Create(
-      fml::closure& async_init_callback,
       TaskRunners task_runners,
       const WindowData window_data,
       Settings settings,
@@ -425,7 +432,6 @@ class Shell final : public PlatformView::Delegate,
   Shell(DartVMRef vm, TaskRunners task_runners, Settings settings);
 
   static std::unique_ptr<Shell> CreateShellOnPlatformThread(
-      fml::closure& async_init_callback,
       DartVMRef vm,
       TaskRunners task_runners,
       const WindowData window_data,
@@ -433,6 +439,16 @@ class Shell final : public PlatformView::Delegate,
       fml::RefPtr<const DartSnapshot> isolate_snapshot,
       const Shell::CreateCallback<PlatformView>& on_create_platform_view,
       const Shell::CreateCallback<Rasterizer>& on_create_rasterizer);
+
+  static bool CreateShellAsyncOnPlatformThread(
+      ShellCreateCallback& async_init_callback,
+      DartVMRef vm,
+      TaskRunners task_runners,
+      WindowData window_data,
+      Settings settings,
+      fml::RefPtr<const DartSnapshot> isolate_snapshot,
+      Shell::CreateCallback<PlatformView>& on_create_platform_view,
+      Shell::CreateCallback<Rasterizer>& on_create_rasterizer);
 
   bool Setup(std::unique_ptr<PlatformView> platform_view,
              std::unique_ptr<Engine> engine,
