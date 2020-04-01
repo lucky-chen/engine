@@ -59,10 +59,11 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * <p>{@code // Instantiate FlutterJNI and attach to the native side. FlutterJNI flutterJNI = new
  * FlutterJNI(); flutterJNI.attachToNative();
  *
- * <p><p><p><p><p>// Use FlutterJNI as desired. flutterJNI.dispatchPointerDataPacket(...);
+ * <p><p><p><p><p><p><p><p><p><p><p><p><p><p><p>// Use FlutterJNI as desired.
+ * flutterJNI.dispatchPointerDataPacket(...);
  *
- * <p><p><p><p><p>// Destroy the connection to the native side and cleanup.
- * flutterJNI.detachFromNativeAndReleaseResources(); }
+ * <p><p><p><p><p><p><p><p><p><p><p><p><p><p><p>// Destroy the connection to the native side and
+ * cleanup. flutterJNI.detachFromNativeAndReleaseResources(); }
  *
  * <p>To provide a visual, interactive surface for Flutter rendering and touch events, register a
  * {@link RenderSurface} with {@link #setRenderSurface(RenderSurface)}
@@ -181,11 +182,27 @@ public class FlutterJNI {
   public void attachToNative(boolean isBackgroundView, boolean asyncInit) {
     ensureRunningOnMainThread();
     ensureNotAttachedToNative();
-    nativePlatformViewId = nativeAttach(this, isBackgroundView, asyncInit);
+    if (asyncInit) {
+      nativeAttachAsync(this, isBackgroundView);
+    } else {
+      nativePlatformViewId = nativeAttach(this, isBackgroundView);
+    }
   }
 
-  private native long nativeAttach(
-      @NonNull FlutterJNI flutterJNI, boolean isBackgroundView, boolean asyncInit);
+  private native long nativeAttach(@NonNull FlutterJNI flutterJNI, boolean isBackgroundView);
+
+  private native void nativeAttachAsync(@NonNull FlutterJNI flutterJNI, boolean isBackgroundView);
+
+  // called by native on async init mode, means engine async init success
+  private void handleNativeAttachAsync(boolean success, long viewId) {
+    if (success) {
+      this.nativePlatformViewId = viewId;
+    }
+    Log.w("flutterJni", "test->  success" + success + ",viewId:" + viewId);
+    for (EngineLifecycleListener listener : engineLifecycleListeners) {
+      listener.onAsyncAttachEnd(success);
+    }
+  }
 
   /**
    * Detaches this {@code FlutterJNI} instance from Flutter's native engine, which precludes any
@@ -643,12 +660,6 @@ public class FlutterJNI {
     // (https://github.com/flutter/flutter/issues/25391)
   }
 
-  // called by native on async init mode, means engine async init success
-  private void handleEngineInit() {
-    for (EngineLifecycleListener listener : engineLifecycleListeners) {
-      listener.onEngineInit();
-    }
-  }
   /**
    * Sends an empty reply (identified by {@code responseId}) from Android to Flutter over the given
    * {@code channel}.

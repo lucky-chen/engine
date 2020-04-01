@@ -5,9 +5,12 @@
 #ifndef FLUTTER_SHELL_PLATFORM_ANDROID_PLATFORM_VIEW_ANDROID_JNI_H_
 #define FLUTTER_SHELL_PLATFORM_ANDROID_PLATFORM_VIEW_ANDROID_JNI_H_
 
+#include <android/log.h>
 #include <jni.h>
 #include "flutter/fml/macros.h"
 #include "flutter/shell/platform/android/platform_view_android.h"
+#define LOGE(...) \
+  __android_log_print(ANDROID_LOG_ERROR, "test->", __VA_ARGS__)  // 定义LOGE类型
 
 namespace flutter {
 
@@ -46,7 +49,10 @@ void SurfaceTextureGetTransformMatrix(JNIEnv* env,
 
 void SurfaceTextureDetachFromGLContext(JNIEnv* env, jobject obj);
 
-void FlutterViewHandleEngineInit(JNIEnv* env, jobject obj);
+void FlutterViewHandleEngineInit(JNIEnv* env,
+                                 jobject obj,
+                                 jboolean success,
+                                 jlong holder_id);
 
 }  // namespace flutter
 

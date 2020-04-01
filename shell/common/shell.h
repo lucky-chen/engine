@@ -47,8 +47,6 @@ enum class DartErrorCode {
   UnknownError = 255
 };
 
-using ShellCreateCallback = std::function<bool(std::unique_ptr<Shell> shell)>;
-
 //------------------------------------------------------------------------------
 /// Perhaps the single most important class in the Flutter engine repository.
 /// When embedders create a Flutter application, they are referring to the
@@ -95,6 +93,7 @@ class Shell final : public PlatformView::Delegate,
  public:
   template <class T>
   using CreateCallback = std::function<std::unique_ptr<T>(Shell&)>;
+  using ShellCreateCallback = std::function<void(std::unique_ptr<Shell> shell)>;
 
   //----------------------------------------------------------------------------
   /// @brief      Creates a shell instance using the provided settings. The
@@ -136,9 +135,7 @@ class Shell final : public PlatformView::Delegate,
   ///             allows for specification of window data. If this is the first
   ///             instance of a shell in the process, this call also bootstraps
   ///             the Dart VM.
-  /// @param[in]  async_init_callback      if null,init sync.
-  ///                                      else init async.and called when
-  ///                                      asyncInit end
+  ///
   /// @param[in]  task_runners             The task runners
   /// @param[in]  window_data              The default data for setting up
   ///                                      ui.Window that attached to this
@@ -168,7 +165,7 @@ class Shell final : public PlatformView::Delegate,
       CreateCallback<PlatformView> on_create_platform_view,
       CreateCallback<Rasterizer> on_create_rasterizer);
 
-  static bool CreateAsync(ShellCreateCallback& callBack,
+  static bool CreateAsync(ShellCreateCallback callBack,
                           TaskRunners task_runners,
                           WindowData window_data,
                           Settings settings,
@@ -183,9 +180,7 @@ class Shell final : public PlatformView::Delegate,
   ///             allows for the specification of an isolate snapshot that
   ///             cannot be adequately described in the settings. This call also
   ///             requires the specification of a running VM instance.
-  /// @param[in]  async_init_callback      if null,init sync.
-  ///                                      else init async.and called when
-  ///                                      asyncInit end
+  ///
   /// @param[in]  task_runners             The task runners
   /// @param[in]  window_data              The default data for setting up
   ///                                      ui.Window that attached to this
@@ -441,27 +436,19 @@ class Shell final : public PlatformView::Delegate,
       const Shell::CreateCallback<Rasterizer>& on_create_rasterizer);
 
   static bool CreateShellAsyncOnPlatformThread(
-      ShellCreateCallback& async_init_callback,
+      ShellCreateCallback async_init_callback,
       DartVMRef vm,
       TaskRunners task_runners,
       WindowData window_data,
       Settings settings,
       fml::RefPtr<const DartSnapshot> isolate_snapshot,
-      Shell::CreateCallback<PlatformView>& on_create_platform_view,
-      Shell::CreateCallback<Rasterizer>& on_create_rasterizer);
+      Shell::CreateCallback<PlatformView> on_create_platform_view,
+      Shell::CreateCallback<Rasterizer> on_create_rasterizer);
 
   bool Setup(std::unique_ptr<PlatformView> platform_view,
              std::unique_ptr<Engine> engine,
              std::unique_ptr<Rasterizer> rasterizer,
              std::unique_ptr<ShellIOManager> io_manager);
-
-  // called on asyncInit mode,set params
-  void BindParams(std::unique_ptr<PlatformView> platform_view,
-                  std::unique_ptr<Rasterizer> rasterizer,
-                  std::unique_ptr<ShellIOManager> io_manager);
-
-  // called on asyncInit mode,setup env
-  void OnEngineInit(std::unique_ptr<Engine> engine);
 
   void ReportTimings();
 

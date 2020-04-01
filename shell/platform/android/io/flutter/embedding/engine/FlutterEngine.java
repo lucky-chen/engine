@@ -67,23 +67,26 @@ public class FlutterEngine {
   private static final String TAG = "FlutterEngine";
 
   @NonNull private final FlutterJNI flutterJNI;
-  @NonNull private final FlutterRenderer renderer;
-  @NonNull private final DartExecutor dartExecutor;
-  @NonNull private final FlutterEnginePluginRegistry pluginRegistry;
+  @NonNull private FlutterRenderer renderer;
+  @NonNull private DartExecutor dartExecutor;
+  @NonNull private FlutterEnginePluginRegistry pluginRegistry;
 
   // System channels.
-  @NonNull private final AccessibilityChannel accessibilityChannel;
-  @NonNull private final KeyEventChannel keyEventChannel;
-  @NonNull private final LifecycleChannel lifecycleChannel;
-  @NonNull private final LocalizationChannel localizationChannel;
-  @NonNull private final NavigationChannel navigationChannel;
-  @NonNull private final PlatformChannel platformChannel;
-  @NonNull private final SettingsChannel settingsChannel;
-  @NonNull private final SystemChannel systemChannel;
-  @NonNull private final TextInputChannel textInputChannel;
+  @NonNull private AccessibilityChannel accessibilityChannel;
+  @NonNull private KeyEventChannel keyEventChannel;
+  @NonNull private LifecycleChannel lifecycleChannel;
+  @NonNull private LocalizationChannel localizationChannel;
+  @NonNull private NavigationChannel navigationChannel;
+  @NonNull private PlatformChannel platformChannel;
+  @NonNull private SettingsChannel settingsChannel;
+  @NonNull private SystemChannel systemChannel;
+  @NonNull private TextInputChannel textInputChannel;
+  @NonNull private Context appContext;
+  @NonNull private FlutterLoader flutterLoader;
+  private boolean automaticallyRegisterPlugins;
 
   // Platform Views.
-  @NonNull private final PlatformViewsController platformViewsController;
+  @NonNull private PlatformViewsController platformViewsController;
 
   // Engine Lifecycle.
   @NonNull private final Set<EngineLifecycleListener> engineLifecycleListeners = new HashSet<>();
@@ -100,10 +103,36 @@ public class FlutterEngine {
 
           platformViewsController.onPreEngineRestart();
         }
-        // new api,called when engine init success for aync mode
-        public void onEngineInit() {
+
+        @Override
+        public void onAsyncAttachEnd(boolean success) {
           for (EngineLifecycleListener lifecycleListener : engineLifecycleListeners) {
-            lifecycleListener.onEngineInit();
+            lifecycleListener.onAsyncAttachEnd(success);
+          }
+          boolean initSuccess = success & flutterJNI.isAttached();
+          if (!initSuccess) {
+            Log.e(
+                "flutterEngine",
+                " asyncAttach failed: isAttached:"
+                    + (flutterJNI.isAttached())
+                    + ",nativeInit:"
+                    + success);
+          }
+          Log.w(
+              "flutterEngine",
+              "test->  onAsyncAttachEnd" + (flutterJNI.isAttached()) + ",nativeInit:" + success);
+          if (initSuccess) {
+            initAfterAttachNative();
+          }
+          // rm retain ref
+          sTempRefContainer.remove(FlutterEngine.this);
+          onAsyncCreateEngineEnd(initSuccess, initSuccess ? FlutterEngine.this : null);
+        }
+
+        @Override
+        public void onAsyncCreateEngineEnd(boolean success, FlutterEngine engine) {
+          for (EngineLifecycleListener lifecycleListener : engineLifecycleListeners) {
+            lifecycleListener.onAsyncCreateEngineEnd(success, engine);
           }
         }
       };
@@ -215,27 +244,30 @@ public class FlutterEngine {
         null);
   }
 
+  private static final Set<FlutterEngine> sTempRefContainer = new HashSet<>();
   /**
    * Same as {@link #FlutterEngine(Context, FlutterLoader, FlutterJNI)}, but init native env with
    * async mode {@code asyncInitListener} async init callback, called when async init finish
    */
-  public static FlutterEngine createEngineAndInitAsync(
-      @NonNull Context context, @NonNull EngineLifecycleListener asyncInitListener) {
-    return new FlutterEngine(
-        context,
-        FlutterLoader.getInstance(),
-        new FlutterJNI(),
-        new PlatformViewsController(),
-        null,
-        true,
-        asyncInitListener);
+  public static void createEngineAndInitAsync(
+      @NonNull Context context, @NonNull EngineLifecycleListener callback) {
+    FlutterEngine engine =
+        new FlutterEngine(
+            context,
+            FlutterLoader.getInstance(),
+            new FlutterJNI(),
+            new PlatformViewsController(),
+            null,
+            true,
+            callback);
+    sTempRefContainer.add(engine);
   }
 
   /**
    * Fully configurable {@code FlutterEngine} constructor. {@code asyncInitListener} if null,init
    * native env sycnc, if not null,will init native env async, and called when async init end
    */
-  public FlutterEngine(
+  protected FlutterEngine(
       @NonNull Context context,
       @NonNull FlutterLoader flutterLoader,
       @NonNull FlutterJNI flutterJNI,
@@ -244,23 +276,32 @@ public class FlutterEngine {
       boolean automaticallyRegisterPlugins,
       EngineLifecycleListener asyncInitListener) {
     this.flutterJNI = flutterJNI;
+    this.appContext = context.getApplicationContext();
+    this.automaticallyRegisterPlugins = automaticallyRegisterPlugins;
+    this.flutterLoader = flutterLoader;
+    this.platformViewsController = platformViewsController;
     flutterLoader.startInitialization(context.getApplicationContext());
     flutterLoader.ensureInitializationComplete(context, dartVmArgs);
 
     flutterJNI.addEngineLifecycleListener(engineLifecycleListener);
     if (asyncInitListener != null) {
       addEngineLifecycleListener(asyncInitListener);
+      attachToJni(true);
+      return;
     }
-    attachToJni(asyncInitListener != null);
+    attachToJni(false);
+    initAfterAttachNative();
+  }
 
-    this.dartExecutor = new DartExecutor(flutterJNI, context.getAssets());
+  private void initAfterAttachNative() {
+    this.dartExecutor = new DartExecutor(this.flutterJNI, this.appContext.getAssets());
     this.dartExecutor.onAttachedToJNI();
 
     // TODO(mattcarroll): FlutterRenderer is temporally coupled to attach(). Remove that coupling if
     // possible.
-    this.renderer = new FlutterRenderer(flutterJNI);
+    this.renderer = new FlutterRenderer(this.flutterJNI);
 
-    accessibilityChannel = new AccessibilityChannel(dartExecutor, flutterJNI);
+    accessibilityChannel = new AccessibilityChannel(dartExecutor, this.flutterJNI);
     keyEventChannel = new KeyEventChannel(dartExecutor);
     lifecycleChannel = new LifecycleChannel(dartExecutor);
     localizationChannel = new LocalizationChannel(dartExecutor);
@@ -270,10 +311,8 @@ public class FlutterEngine {
     systemChannel = new SystemChannel(dartExecutor);
     textInputChannel = new TextInputChannel(dartExecutor);
 
-    this.platformViewsController = platformViewsController;
-
     this.pluginRegistry =
-        new FlutterEnginePluginRegistry(context.getApplicationContext(), this, flutterLoader);
+        new FlutterEnginePluginRegistry(this.appContext, this, this.flutterLoader);
 
     if (automaticallyRegisterPlugins) {
       registerPlugins();
@@ -285,7 +324,7 @@ public class FlutterEngine {
     // TODO(mattcarroll): update native call to not take in "isBackgroundView"
     flutterJNI.attachToNative(false, asyncInitMode);
 
-    if (!isAttachedToJni()) {
+    if (!asyncInitMode && !isAttachedToJni()) {
       throw new RuntimeException("FlutterEngine failed to attach to its native Object reference.");
     }
   }
@@ -482,7 +521,11 @@ public class FlutterEngine {
   public interface EngineLifecycleListener {
     /** Lifecycle callback invoked before a hot restart of the Flutter engine. */
     void onPreEngineRestart();
-    /** Lifecycle callback invoked after flutter engine async init success . */
-    void onEngineInit();
+    /**
+     * Lifecycle callback invoked after flutterJni.asyncAttachNative end (native engine env ready).
+     */
+    void onAsyncAttachEnd(boolean success);
+
+    void onAsyncCreateEngineEnd(boolean success, FlutterEngine engine);
   }
 }
