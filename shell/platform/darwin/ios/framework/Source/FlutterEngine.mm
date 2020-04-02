@@ -463,9 +463,7 @@ NSString* const FlutterDefaultDartEntrypoint = nil;
                                       _threadHost.io_thread->GetTaskRunner()           // io
     );
     // Create the shell. This is a blocking operation.
-    fml::closure empty_callback;
-    _shell = flutter::Shell::Create(empty_callback,
-                                    std::move(task_runners),  // task runners
+    _shell = flutter::Shell::Create(std::move(task_runners),  // task runners
                                     std::move(windowData),    // window data
                                     std::move(settings),      // settings
                                     on_create_platform_view,  // platform view creation
@@ -478,17 +476,30 @@ NSString* const FlutterDefaultDartEntrypoint = nil;
                                       _threadHost.ui_thread->GetTaskRunner(),          // ui
                                       _threadHost.io_thread->GetTaskRunner()           // io
     );
-    // Create the shell. This is a blocking operation.
-    fml::closure async_init_callback;
-    oc_async_init_block = [oc_async_init_block copy];
+    // Create the shell with async mode . This is a not blocking operation.
     if (oc_async_init_block) {
-      async_init_callback = [oc_async_init_block]() {
-        oc_async_init_block();
-        [oc_async_init_block release];
-      };
+      oc_async_init_block = [oc_async_init_block retain];
+      FlutterEngine* selfRef = [self retain];
+      flutter::Shell::CreateAsync(
+          [oc_async_init_block, selfRef](bool success, std::unique_ptr<flutter::Shell> shell) {
+            if (!success) {
+              FML_LOG(ERROR) << "Could not start a shell FlutterEngine on asyncInitMode";
+              oc_async_init_block(false);
+            } else {
+              selfRef->_shell = std::move(shell);
+              [selfRef setUpWhenInit];
+              oc_async_init_block(true);
+              // release ref
+              [oc_async_init_block release];
+              [selfRef release];
+            }
+          },
+          std::move(task_runners), std::move(windowData), std::move(settings),
+          on_create_platform_view, on_create_rasterizer);
+      return true;
     }
-    _shell = flutter::Shell::Create(async_init_callback,
-                                    std::move(task_runners),  // task runners
+    // Create the shell. This is a blocking operation.
+    _shell = flutter::Shell::Create(std::move(task_runners),  // task runners
                                     std::move(windowData),    // window data
                                     std::move(settings),      // settings
                                     on_create_platform_view,  // platform view creation
@@ -500,9 +511,7 @@ NSString* const FlutterDefaultDartEntrypoint = nil;
     FML_LOG(ERROR) << "Could not start a shell FlutterEngine with entrypoint: "
                    << entrypoint.UTF8String;
   } else {
-    if (!oc_async_init_block) {
-      [self setUpWhenInit];
-    }
+    [self setUpWhenInit];
   }
   return _shell != nullptr;
 }
@@ -526,19 +535,22 @@ NSString* const FlutterDefaultDartEntrypoint = nil;
 }
 
 - (void)asyncRun:(InitCallBackBlock)asyncCallback {
-  NSAssert(asyncCallback != nil,
-           @"asyncCallback must be not nil! you should called other api after initCallback called");
+  if (asyncCallback == nil) {
+    FML_LOG(WARNING) << "asyncRun: callback is nil, you should care lifecycle, and called other "
+                        "api after initCallback called";
+    asyncCallback = ^(bool success) {
+    };
+  }
   asyncCallback = [asyncCallback copy];
   [self createShell:FlutterDefaultDartEntrypoint
              libraryURI:nil
-      asyncInitCallback:^() {
-        [self setUpWhenInit];
-        [self launchEngine:FlutterDefaultDartEntrypoint libraryURI:nil];
-        // in release mode,add np protection
-        if (asyncCallback != nil) {
-          asyncCallback();
-          [asyncCallback release];
+      asyncInitCallback:^(bool success) {
+        if (success) {
+          [self setUpWhenInit];
+          [self launchEngine:FlutterDefaultDartEntrypoint libraryURI:nil];
         }
+        asyncCallback(success);
+        [asyncCallback release];
       }];
 }
 

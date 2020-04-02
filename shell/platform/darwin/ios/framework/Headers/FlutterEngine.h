@@ -27,7 +27,7 @@ extern NSString* const FlutterDefaultDartEntrypoint;
 /**
  * the callback of engine async init mode
  */
-typedef void (^InitCallBackBlock)();
+typedef void (^InitCallBackBlock)(bool);
 
 /**
  * The FlutterEngine class coordinates a single instance of execution for a
@@ -133,7 +133,7 @@ FLUTTER_EXPORT
  */
 - (BOOL)run;
 
-/** like run() method, but this method will init native with async mode
+/** like run() method, but this method not block mainThread when init
  * @param block callbackBlock, called when async init end. must not be nil!
  */
 - (void)asyncRun:(InitCallBackBlock)block;

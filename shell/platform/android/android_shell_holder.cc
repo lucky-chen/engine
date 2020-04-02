@@ -126,21 +126,19 @@ void AndroidShellHolder::init(AsyncInitCallback holderCallback) {
                                     io_runner         // io
   );
   if (holderCallback) {
-    Shell::ShellCreateCallback shellCallback =
-        [holderCallback = std::move(holderCallback),
-         holder_point = this](std::unique_ptr<Shell> shell) {
-          if (!shell) {
+    Shell::CreateAsync(
+        [holderCallback = std::move(holderCallback), holder_point = this](
+            bool success, std::unique_ptr<Shell> shell) {
+          if (!success) {
             holderCallback(false);
             return;
           }
           holder_point->shell_ = std::move(shell);
           holder_point->setThreadPriority();
           holderCallback(true);
-        };
-    Shell::CreateAsync(std::move(shellCallback), std::move(task_runners),
-                       GetDefaultWindowData(), settings_,
-                       std::move(on_create_platform_view),
-                       std::move(on_create_rasterizer));
+        },
+        std::move(task_runners), GetDefaultWindowData(), settings_,
+        std::move(on_create_platform_view), std::move(on_create_rasterizer));
   } else {
     shell_ =
         Shell::Create(task_runners,             // task runners

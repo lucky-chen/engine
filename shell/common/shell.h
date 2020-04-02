@@ -93,7 +93,8 @@ class Shell final : public PlatformView::Delegate,
  public:
   template <class T>
   using CreateCallback = std::function<std::unique_ptr<T>(Shell&)>;
-  using ShellCreateCallback = std::function<void(std::unique_ptr<Shell> shell)>;
+  using ShellCreateCallback =
+      std::function<void(bool success, std::unique_ptr<Shell> shell)>;
 
   //----------------------------------------------------------------------------
   /// @brief      Creates a shell instance using the provided settings. The
@@ -165,7 +166,7 @@ class Shell final : public PlatformView::Delegate,
       CreateCallback<PlatformView> on_create_platform_view,
       CreateCallback<Rasterizer> on_create_rasterizer);
 
-  static bool CreateAsync(ShellCreateCallback callBack,
+  static void CreateAsync(ShellCreateCallback callBack,
                           TaskRunners task_runners,
                           WindowData window_data,
                           Settings settings,

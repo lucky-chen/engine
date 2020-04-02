@@ -66,7 +66,7 @@ import java.util.Set;
 public class FlutterEngine {
   private static final String TAG = "FlutterEngine";
 
-  @NonNull private final FlutterJNI flutterJNI;
+  @NonNull private FlutterJNI flutterJNI;
   @NonNull private FlutterRenderer renderer;
   @NonNull private DartExecutor dartExecutor;
   @NonNull private FlutterEnginePluginRegistry pluginRegistry;
@@ -109,30 +109,25 @@ public class FlutterEngine {
           for (EngineLifecycleListener lifecycleListener : engineLifecycleListeners) {
             lifecycleListener.onAsyncAttachEnd(success);
           }
-          boolean initSuccess = success & flutterJNI.isAttached();
-          if (!initSuccess) {
+          if (success & flutterJNI.isAttached()) {
+            initAfterAttachNative();
+            onAsyncCreateEngineEnd(true);
+
+          } else {
             Log.e(
-                "flutterEngine",
-                " asyncAttach failed: isAttached:"
+                TAG,
+                "asyncAttach failed,isAttached:"
                     + (flutterJNI.isAttached())
                     + ",nativeInit:"
                     + success);
+            onAsyncCreateEngineEnd(false);
           }
-          Log.w(
-              "flutterEngine",
-              "test->  onAsyncAttachEnd" + (flutterJNI.isAttached()) + ",nativeInit:" + success);
-          if (initSuccess) {
-            initAfterAttachNative();
-          }
-          // rm retain ref
-          sTempRefContainer.remove(FlutterEngine.this);
-          onAsyncCreateEngineEnd(initSuccess, initSuccess ? FlutterEngine.this : null);
         }
 
         @Override
-        public void onAsyncCreateEngineEnd(boolean success, FlutterEngine engine) {
+        public void onAsyncCreateEngineEnd(boolean success) {
           for (EngineLifecycleListener lifecycleListener : engineLifecycleListeners) {
-            lifecycleListener.onAsyncCreateEngineEnd(success, engine);
+            lifecycleListener.onAsyncCreateEngineEnd(success);
           }
         }
       };
@@ -234,7 +229,7 @@ public class FlutterEngine {
       @NonNull PlatformViewsController platformViewsController,
       @Nullable String[] dartVmArgs,
       boolean automaticallyRegisterPlugins) {
-    this(
+    doInit(
         context,
         flutterLoader,
         flutterJNI,
@@ -244,30 +239,37 @@ public class FlutterEngine {
         null);
   }
 
-  private static final Set<FlutterEngine> sTempRefContainer = new HashSet<>();
-  /**
-   * Same as {@link #FlutterEngine(Context, FlutterLoader, FlutterJNI)}, but init native env with
-   * async mode {@code asyncInitListener} async init callback, called when async init finish
-   */
-  public static void createEngineAndInitAsync(
-      @NonNull Context context, @NonNull EngineLifecycleListener callback) {
-    FlutterEngine engine =
-        new FlutterEngine(
-            context,
-            FlutterLoader.getInstance(),
-            new FlutterJNI(),
-            new PlatformViewsController(),
-            null,
-            true,
-            callback);
-    sTempRefContainer.add(engine);
+  public FlutterEngine() {}
+
+  public void initAsync(
+      @NonNull Context appContext, @NonNull EngineLifecycleListener asyncInitCallback) {
+    if (asyncInitCallback == null) {
+      Log.w(
+          TAG,
+          "initAsync: callback is null, you should care lifecycle, and called other api after initCallback called");
+      asyncInitCallback =
+          new EngineLifecycleListener() {
+            @Override
+            public void onPreEngineRestart() {}
+
+            @Override
+            public void onAsyncAttachEnd(boolean success) {}
+
+            @Override
+            public void onAsyncCreateEngineEnd(boolean success) {}
+          };
+    }
+    doInit(
+        appContext,
+        FlutterLoader.getInstance(),
+        new FlutterJNI(),
+        new PlatformViewsController(),
+        null,
+        true,
+        asyncInitCallback);
   }
 
-  /**
-   * Fully configurable {@code FlutterEngine} constructor. {@code asyncInitListener} if null,init
-   * native env sycnc, if not null,will init native env async, and called when async init end
-   */
-  protected FlutterEngine(
+  private void doInit(
       @NonNull Context context,
       @NonNull FlutterLoader flutterLoader,
       @NonNull FlutterJNI flutterJNI,
@@ -526,6 +528,6 @@ public class FlutterEngine {
      */
     void onAsyncAttachEnd(boolean success);
 
-    void onAsyncCreateEngineEnd(boolean success, FlutterEngine engine);
+    void onAsyncCreateEngineEnd(boolean success);
   }
 }

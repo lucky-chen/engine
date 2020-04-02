@@ -59,11 +59,11 @@ import java.util.concurrent.CopyOnWriteArraySet;
  * <p>{@code // Instantiate FlutterJNI and attach to the native side. FlutterJNI flutterJNI = new
  * FlutterJNI(); flutterJNI.attachToNative();
  *
- * <p><p><p><p><p><p><p><p><p><p><p><p><p><p><p>// Use FlutterJNI as desired.
- * flutterJNI.dispatchPointerDataPacket(...);
+ * <p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p>// Use FlutterJNI
+ * as desired. flutterJNI.dispatchPointerDataPacket(...);
  *
- * <p><p><p><p><p><p><p><p><p><p><p><p><p><p><p>// Destroy the connection to the native side and
- * cleanup. flutterJNI.detachFromNativeAndReleaseResources(); }
+ * <p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p><p>// Destroy the
+ * connection to the native side and cleanup. flutterJNI.detachFromNativeAndReleaseResources(); }
  *
  * <p>To provide a visual, interactive surface for Flutter rendering and touch events, register a
  * {@link RenderSurface} with {@link #setRenderSurface(RenderSurface)}
@@ -198,7 +198,6 @@ public class FlutterJNI {
     if (success) {
       this.nativePlatformViewId = viewId;
     }
-    Log.w("flutterJni", "test->  success" + success + ",viewId:" + viewId);
     for (EngineLifecycleListener listener : engineLifecycleListeners) {
       listener.onAsyncAttachEnd(success);
     }

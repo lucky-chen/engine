@@ -10,7 +10,6 @@ import android.support.annotation.NonNull;
 import android.support.annotation.UiThread;
 import android.util.Log;
 import io.flutter.app.FlutterPluginRegistry;
-import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.embedding.engine.FlutterEngine.EngineLifecycleListener;
 import io.flutter.embedding.engine.FlutterJNI;
 import io.flutter.embedding.engine.dart.DartExecutor;
@@ -166,6 +165,6 @@ public class FlutterNativeView implements BinaryMessenger {
     public void onAsyncAttachEnd(boolean success) {}
 
     @Override
-    public void onAsyncCreateEngineEnd(boolean success, FlutterEngine engine) {}
+    public void onAsyncCreateEngineEnd(boolean success) {}
   }
 }

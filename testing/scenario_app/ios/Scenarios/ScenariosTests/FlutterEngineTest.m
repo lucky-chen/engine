@@ -49,9 +49,11 @@
 
 - (void)testAsyncInitEngine {
   FlutterEngine* engine = [[FlutterEngine alloc] initWithName:@"my flutter engine"];
-  [flutterEngine asyncRun:^(){
-      // on app
+  [flutterEngine asyncRun:^(boolean success) {
+    // on app
+    if (success) {
       //[GeneratedPluginRegistrant registerWithRegistry:self];
+    }
   }];
 }
 

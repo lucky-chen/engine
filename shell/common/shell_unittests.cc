@@ -147,6 +147,51 @@ TEST_F(ShellTest,
   ASSERT_FALSE(DartVMRef::IsInstanceRunning());
 }
 
+TEST_F(ShellTest,
+       AsyncInitializeWithMultipleThreadButCallingThreadAsPlatformThread) {
+  ASSERT_FALSE(DartVMRef::IsInstanceRunning());
+  Settings settings = CreateSettingsForFixture();
+  ThreadHost thread_host(
+      "io.flutter.test." + GetCurrentTestName() + ".",
+      ThreadHost::Type::GPU | ThreadHost::Type::IO | ThreadHost::Type::UI);
+  fml::MessageLoop::EnsureInitializedForCurrentThread();
+  TaskRunners task_runners("test",
+                           fml::MessageLoop::GetCurrent().GetTaskRunner(),
+                           thread_host.gpu_thread->GetTaskRunner(),
+                           thread_host.ui_thread->GetTaskRunner(),
+                           thread_host.io_thread->GetTaskRunner());
+  fml::AutoResetWaitableEvent latch;
+  std::unique_ptr<Shell> shell_res;
+  Shell::CreateAsync(
+      [&latch, &shell_res](bool success, std::unique_ptr<Shell> shell) {
+        if (success) {
+          shell_res = std::move(shell);
+        }
+        latch.Signal();
+      },
+      task_runners, WindowData{/* default window data */}, settings,
+      [](Shell& shell) {
+        // This is unused in the platform view as we are not using the simulated
+        // vsync mechanism. We should have better DI in the tests.
+        const auto vsync_clock = std::make_shared<ShellTestVsyncClock>();
+        return ShellTestPlatformView::Create(
+            shell, shell.GetTaskRunners(), vsync_clock,
+            [task_runners = shell.GetTaskRunners()]() {
+              return static_cast<std::unique_ptr<VsyncWaiter>>(
+                  std::make_unique<VsyncWaiterFallback>(task_runners));
+            },
+            ShellTestPlatformView::BackendType::kDefaultBackend);
+      },
+      [](Shell& shell) {
+        return std::make_unique<Rasterizer>(shell, shell.GetTaskRunners());
+      });
+  latch.Wait();
+  ASSERT_TRUE(ValidateShell(shell_res.get()));
+  ASSERT_TRUE(DartVMRef::IsInstanceRunning());
+  DestroyShell(std::move(shell_res), std::move(task_runners));
+  ASSERT_FALSE(DartVMRef::IsInstanceRunning());
+}
+
 TEST_F(ShellTest, InitializeWithGPUAndPlatformThreadsTheSame) {
   ASSERT_FALSE(DartVMRef::IsInstanceRunning());
   Settings settings = CreateSettingsForFixture();

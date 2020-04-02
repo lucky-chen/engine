@@ -397,16 +397,13 @@ static void DispatchPlatformMessage(JNIEnv* env,
                                     jobject message,
                                     jint position,
                                     jint responseId) {
-  LOGE("test-> native nativeDispatchPlatformMessage start ");
   auto plv = ANDROID_SHELL_HOLDER->GetPlatformView();
-  LOGE("test-> native nativeDispatchPlatformMessage stage_1 ");
   plv->DispatchPlatformMessage(env,                                         //
                                fml::jni::JavaStringToString(env, channel),  //
                                message,                                     //
                                position,                                    //
                                responseId                                   //
   );
-  LOGE("test-> native nativeDispatchPlatformMessage end ");
 }
 
 static void DispatchEmptyPlatformMessage(JNIEnv* env,
