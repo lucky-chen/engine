@@ -43,7 +43,38 @@ NSString* const FlutterDefaultDartEntrypoint = nil;
 
 @property(nonatomic, readwrite, copy) NSString* isolateId;
 @property(nonatomic, retain) id<NSObject> flutterViewControllerWillDeallocObserver;
+@property(nonatomic, retain) id<FlutterEngineCallBack> delegate;
 @end
+
+class ShellCreateParams {
+ public:
+  flutter::TaskRunners task_runners_;
+  flutter::WindowData window_data_;
+  flutter::Settings settings_;
+  flutter::Shell::CreateCallback<flutter::PlatformView> on_create_platform_view_;
+  flutter::Shell::CreateCallback<flutter::Rasterizer> on_create_rasterizer_;
+
+  ShellCreateParams(flutter::TaskRunners task_runners,
+                    flutter::WindowData window_data,
+                    flutter::Settings settings,
+                    flutter::Shell::CreateCallback<flutter::PlatformView> on_create_platform_view,
+                    flutter::Shell::CreateCallback<flutter::Rasterizer> on_create_rasterizer)
+      : task_runners_(std::move(task_runners)),
+        window_data_(std::move(window_data)),
+        settings_(std::move(settings)),
+        on_create_platform_view_(std::move(on_create_platform_view)),
+        on_create_rasterizer_(std::move(on_create_rasterizer)) {}
+
+  //  ShellCreateParams(ShellCreateParams&& that) {
+  //    task_runners_ = std::move(that.task_runners_);
+  //    window_data_ = std::move(that.window_data_);
+  //    settings_ = std::move(that.settings_);
+  //    on_create_platform_view_ = std::move(that.on_create_platform_view_);
+  //    on_create_rasterizer_ = std::move(that.on_create_rasterizer_);
+  //  }
+  //
+  //  ShellCreateParams& operator=(ShellCreateParams&& that);
+};
 
 @implementation FlutterEngine {
   fml::scoped_nsobject<FlutterDartProject> _dartProject;
@@ -409,12 +440,8 @@ NSString* const FlutterDefaultDartEntrypoint = nil;
                                                             libraryOrNil:libraryOrNil]);
 }
 
-- (BOOL)createShell:(NSString*)entrypoint libraryURI:(NSString*)libraryURI {
-  if (_shell != nullptr) {
-    FML_LOG(WARNING) << "This FlutterEngine was already invoked.";
-    return NO;
-  }
-
+- (std::unique_ptr<ShellCreateParams>)initThreadEnv:(NSString*)entrypoint
+                                         libraryURI:(NSString*)libraryURI {
   static size_t shellCount = 1;
 
   auto settings = [_dartProject.get() settings];
@@ -471,13 +498,18 @@ NSString* const FlutterDefaultDartEntrypoint = nil;
                                       _threadHost.ui_thread->GetTaskRunner(),          // ui
                                       _threadHost.io_thread->GetTaskRunner()           // io
     );
+
+    return std::make_unique<ShellCreateParams>(
+        std::move(task_runners), std::move(windowData), std::move(settings),
+        std::move(on_create_platform_view), std::move(on_create_rasterizer));
+
     // Create the shell. This is a blocking operation.
-    _shell = flutter::Shell::Create(std::move(task_runners),  // task runners
-                                    std::move(windowData),    // window data
-                                    std::move(settings),      // settings
-                                    on_create_platform_view,  // platform view creation
-                                    on_create_rasterizer      // rasterzier creation
-    );
+    //    _shell = flutter::Shell::Create(std::move(task_runners),  // task runners
+    //                                    std::move(windowData),    // window data
+    //                                    std::move(settings),      // settings
+    //                                    on_create_platform_view,  // platform view creation
+    //                                    on_create_rasterizer      // rasterzier creation
+    // );
   } else {
     flutter::TaskRunners task_runners(threadLabel.UTF8String,                          // label
                                       fml::MessageLoop::GetCurrent().GetTaskRunner(),  // platform
@@ -485,34 +517,111 @@ NSString* const FlutterDefaultDartEntrypoint = nil;
                                       _threadHost.ui_thread->GetTaskRunner(),          // ui
                                       _threadHost.io_thread->GetTaskRunner()           // io
     );
-    // Create the shell. This is a blocking operation.
-    _shell = flutter::Shell::Create(std::move(task_runners),  // task runners
-                                    std::move(windowData),    // window data
-                                    std::move(settings),      // settings
-                                    on_create_platform_view,  // platform view creation
-                                    on_create_rasterizer      // rasterzier creation
-    );
+    return std::make_unique<ShellCreateParams>(
+        std::move(task_runners), std::move(windowData), std::move(settings),
+        std::move(on_create_platform_view), std::move(on_create_rasterizer));
+    // Create the shell with async mode . This is a not blocking operation.
+    //    if (oc_async_init_block) {
+    //      oc_async_init_block = [oc_async_init_block copy];
+    //      FlutterEngine* selfRef = [self retain];
+    //      flutter::Shell::CreateAsync(
+    //          [oc_async_init_block, selfRef](bool success, std::unique_ptr<flutter::Shell> shell)
+    //          {
+    //            if (!success) {
+    //              FML_LOG(ERROR) << "Could not start a shell FlutterEngine on asyncInitMode";
+    //              oc_async_init_block(false);
+    //            } else {
+    //              selfRef->_shell = std::move(shell);
+    //              [selfRef setUpWhenInit];
+    //              oc_async_init_block(true);
+    //              // release ref
+    //              [oc_async_init_block release];
+    //              [selfRef release];
+    //            }
+    //          },
+    //          std::move(task_runners), std::move(windowData), std::move(settings),
+    //          on_create_platform_view, on_create_rasterizer);
+    //      return true;
+    //    }
+    //    // Create the shell. This is a blocking operation.
+    //    _shell = flutter::Shell::Create(std::move(task_runners),  // task runners
+    //                                    std::move(windowData),    // window data
+    //                                    std::move(settings),      // settings
+    //                                    on_create_platform_view,  // platform view creation
+    //                                    on_create_rasterizer      // rasterzier creation
+    //    );
   }
 
+  //  if (_shell == nullptr) {
+  //    FML_LOG(ERROR) << "Could not start a shell FlutterEngine with entrypoint: "
+  //                   << entrypoint.UTF8String;
+  //  } else {
+  //    [self setUpWhenInit];
+  //  }
+  //  return _shell != nullptr;
+}
+
+- (BOOL)createShell:(NSString*)entrypoint libraryURI:(NSString*)libraryURI {
+  if (_shell != nullptr) {
+    FML_LOG(WARNING) << "This FlutterEngine was already invoked.";
+    return NO;
+  }
+  auto init_params = [self initThreadEnv:entrypoint libraryURI:libraryURI];
+  _shell = flutter::Shell::Create(
+      std::move(init_params->task_runners_),             // task runners
+      std::move(init_params->window_data_),              // window data
+      std::move(init_params->settings_),                 // settings
+      std::move(init_params->on_create_platform_view_),  // platform view creation
+      std::move(init_params->on_create_rasterizer_)      // rasterzier creation
+  );
   if (_shell == nullptr) {
     FML_LOG(ERROR) << "Could not start a shell FlutterEngine with entrypoint: "
                    << entrypoint.UTF8String;
   } else {
-    [self setupChannels];
-    [self onLocaleUpdated:nil];
-    if (!_platformViewsController) {
-      _platformViewsController.reset(new flutter::FlutterPlatformViewsController());
-    }
-    _publisher.reset([[FlutterObservatoryPublisher alloc] init]);
-    [self maybeSetupPlatformViewChannels];
-    _shell->GetIsGpuDisabledSyncSwitch()->SetSwitch(_isGpuDisabled ? true : false);
+    [self setUpWhenInit];
   }
-
   return _shell != nullptr;
+}
+
+- (void)setUpWhenInit {
+  [self setupChannels];
+  [self onLocaleUpdated:nil];
+  if (!_platformViewsController) {
+    _platformViewsController.reset(new flutter::FlutterPlatformViewsController());
+  }
+  _publisher.reset([[FlutterObservatoryPublisher alloc] init]);
+  [self maybeSetupPlatformViewChannels];
+  _shell->GetIsGpuDisabledSyncSwitch()->SetSwitch(_isGpuDisabled ? true : false);
 }
 
 - (BOOL)run {
   return [self runWithEntrypoint:FlutterDefaultDartEntrypoint libraryURI:nil];
+}
+
++ (void)createEngineAsync:(id<FlutterEngineCallBack>)delegate
+                     name:(NSString*)labelPrefix
+               entrypoint:(NSString*)entrypoint
+               libraryURI:(NSString*)libraryURI {
+  FlutterEngine* engine = [[FlutterEngine alloc] initWithName:labelPrefix];
+  engine.delegate = delegate;
+  auto init_params = [engine initThreadEnv:entrypoint libraryURI:libraryURI];
+  [engine retain];
+  flutter::Shell::Create(
+      [engine](std::unique_ptr<flutter::Shell> shell) {
+        if (shell) {
+          engine->_shell = std::move(shell);
+          [engine setUpWhenInit];
+        }
+        if (engine.delegate && [engine.delegate respondsToSelector:@selector(onEngineCreated:)]) {
+          [engine.delegate onEngineCreated:engine->_shell ? engine : nil];
+        }
+        [engine release];
+      },
+      std::move(init_params->task_runners_),  // task runners
+      std::move(init_params->window_data_),   // window data
+      std::move(init_params->settings_),      // settings,
+      std::move(init_params->on_create_platform_view_),
+      std::move(init_params->on_create_rasterizer_));
 }
 
 - (BOOL)runWithEntrypoint:(NSString*)entrypoint libraryURI:(NSString*)libraryURI {

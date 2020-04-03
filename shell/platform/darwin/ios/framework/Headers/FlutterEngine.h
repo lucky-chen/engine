@@ -50,7 +50,15 @@ extern NSString* const FlutterDefaultDartEntrypoint;
  * either `-runWithEntrypoint:` or `-runWithEntrypoint:libraryURI` is invoked.
  * One of these methods must be invoked before calling `-setViewController:`.
  */
+@class FlutterEngine;
+
 FLUTTER_EXPORT
+
+@protocol FlutterEngineCallBack <NSObject>
+@required
+- (void)onEngineCreated:(FlutterEngine*)engine;
+@end
+
 @interface FlutterEngine : NSObject <FlutterTextureRegistry, FlutterPluginRegistry>
 
 /**
@@ -133,6 +141,13 @@ FLUTTER_EXPORT
  */
 - (BOOL)run;
 
+/** like run() method, but this method not block mainThread when init
+ * @param block callbackBlock, called when async init end. must not be nil!
+ */
++ (void)createEngineAsync:(id<FlutterEngineCallBack>)callback
+                     name:(NSString*)labelPrefix
+               entrypoint:(NSString*)entrypoint
+               libraryURI:(NSString*)libraryURI;
 /**
  * Runs a Dart program on an Isolate from the main Dart library (i.e. the library that
  * contains `main()`).

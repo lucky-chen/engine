@@ -95,6 +95,7 @@ class Shell final : public PlatformView::Delegate,
  public:
   template <class T>
   using CreateCallback = std::function<std::unique_ptr<T>(Shell&)>;
+  using ShellCreateCallback = std::function<void(std::unique_ptr<Shell> shell)>;
 
   //----------------------------------------------------------------------------
   /// @brief      Creates a shell instance using the provided settings. The
@@ -166,6 +167,13 @@ class Shell final : public PlatformView::Delegate,
       CreateCallback<PlatformView> on_create_platform_view,
       CreateCallback<Rasterizer> on_create_rasterizer);
 
+  static void Create(ShellCreateCallback callBack,
+                     TaskRunners task_runners,
+                     WindowData window_data,
+                     Settings settings,
+                     CreateCallback<PlatformView> on_create_platform_view,
+                     CreateCallback<Rasterizer> on_create_rasterizer);
+
   //----------------------------------------------------------------------------
   /// @brief      Creates a shell instance using the provided settings. The
   ///             callbacks to create the various shell subcomponents will be
@@ -201,7 +209,8 @@ class Shell final : public PlatformView::Delegate,
   ///             check the validity of the shell (using the IsSetup call)
   ///             immediately after getting a pointer to it.
   ///
-  static std::unique_ptr<Shell> Create(
+  static void Create(
+      ShellCreateCallback callBack,
       TaskRunners task_runners,
       const WindowData window_data,
       Settings settings,
@@ -422,7 +431,8 @@ class Shell final : public PlatformView::Delegate,
 
   Shell(DartVMRef vm, TaskRunners task_runners, Settings settings);
 
-  static std::unique_ptr<Shell> CreateShellOnPlatformThread(
+  static void CreateShellOnPlatformThread(
+      ShellCreateCallback async_init_callback,
       DartVMRef vm,
       TaskRunners task_runners,
       const WindowData window_data,
